@@ -1,0 +1,16 @@
+# executables and build output
+sim
+sim_profile
+run_tests
+run_bench
+*.dSYM/
+*.o
+gmon.out
+profile.txt
+
+# data
+data/
+
+# dotfiles (except this file)
+.*
+!.gitignore
