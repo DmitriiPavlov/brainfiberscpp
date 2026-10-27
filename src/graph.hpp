@@ -45,6 +45,33 @@ private:
 
 };
 
+template <typename T>
+class Grid2D {
+public:
+    Grid2D() = default;
+    Grid2D(size_t w, size_t h, const T& init = T{})
+        : w_(w), h_(h), data_(w * h, init) {}
+
+    size_t w() const { return w_; }
+    size_t h() const { return h_; }
+
+    const T& operator[](size_t x, size_t y) const { return data_[y * w_ + x]; }
+    T&       operator[](size_t x, size_t y)       { return data_[y * w_ + x]; }
+
+    const T& operator[](const std::pair<size_t, size_t>& p) const { return (*this)[p.first, p.second]; }
+    T& operator[](const std::pair<size_t, size_t>& p) { return (*this)[p.first, p.second]; }
+
+    std::vector<T>&       flat()       { return data_; }
+    const std::vector<T>& flat() const { return data_; }
+
+    auto view()       { return std::mdspan(data_.data(), h_, w_); }
+    auto view() const { return std::mdspan(data_.data(), h_, w_); }
+
+private:
+    size_t w_ = 0, h_ = 0;
+    std::vector<T> data_;
+};
+
 
 class PlanarGraphView{
 public:
@@ -56,8 +83,8 @@ public:
     explicit PlanarGraphView(Graph& graph, double resolution);
 
     Vec2 operator[](int i) const{return  g[i];}
-    std::vector<int>& operator[](std::pair<size_t, size_t> cell) const {return  view[cell.second, cell.first];}
-    std::vector<int>& operator[](size_t x, size_t y) const {return  view[y,x];}
+    std::vector<int>& operator[](std::pair<size_t, size_t> cell) {return  grid[cell.first, cell.second];}
+    std::vector<int>& operator[](size_t x, size_t y) {return  grid[x,y];}
 
 
     std::vector<int>& neighbors(int point_index) {return g.neighbors(point_index);}
@@ -70,6 +97,5 @@ public:
 private:
     double cell_w_, cell_h_;
     Graph& g;
-    std::vector<std::vector<int>> spacially_organized_points;
-    const SpacialView view;
+    Grid2D<std::vector<int>> grid;
 };

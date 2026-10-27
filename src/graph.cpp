@@ -189,10 +189,7 @@ std::pair<size_t, size_t> PlanarGraphView::to_cell(Vec2 p) const {
 
 //must have recent convenience data
 PlanarGraphView::PlanarGraphView(Graph& _graph, size_t _w, size_t _h)
-    : g(_graph), w(_w), h(_h),
-      spacially_organized_points(_w*_h, std::vector<int>()),
-      view(spacially_organized_points.data(), h, w){
-
+    : g(_graph), w(_w), h(_h), grid(_w, _h, std::vector<int>()) {
 
     cell_w_ = (g.max_x - g.min_x) / w;
     cell_h_ = (g.max_y - g.min_y) / h;

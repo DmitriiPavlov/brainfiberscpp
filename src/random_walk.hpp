@@ -78,24 +78,25 @@ public:
 
 class ParticleAggregate {
 public:
-    ParticleAggregate(PlanarGraphView& g, int i, int n)
-        : graph(g), total(n), concentration(g.h * g.w), view(concentration.data(), g.h, g.w) {
-        point_mass(i, n);
+    explicit ParticleAggregate(PlanarGraphView& g, int i, int n)
+        : graph(g), total(n), concentration(g.w, g.h, 0.0){
+        point_mass_reset(i, n);
     }
+
     ParticleAggregate(const ParticleAggregate&) = delete;
 
     //reading triggers a refresh if we mutated with step_all
     double operator[](int x, int y) const {
         refresh();
-        return view[y, x];
+        return concentration[x,y];
     }
 
     const std::vector<double>& field() const {   
         refresh();
-        return concentration;
+        return concentration.flat();
     }
 
-    void point_mass(int i, int n) {
+    void point_mass_reset(int i, int n) {
         total = n;
         particles.clear();
         particles.reserve(n);
@@ -117,20 +118,18 @@ public:
 private:
     void refresh() const {
         if (!dirty) return;
-        std::ranges::fill(concentration, 0.0);
+        std::ranges::fill(concentration.flat(), 0.0);
         const double w = 1.0 / total;
         for (const auto& p : particles) {
-            auto [x, y] = graph.to_cell(p.position(graph));
-            view[y, x] += w;
+            concentration[graph.to_cell(p.position(graph))] += w;
         }
         dirty = false;
     }
 
     PlanarGraphView& graph;
     int total;
-    mutable std::vector<double> concentration;
     std::vector<Particle> particles;
-    mutable std::mdspan<double, std::dextents<size_t, 2>> view;   // declared after concentration
+    mutable Grid2D<double> concentration;
     mutable bool dirty = true;
 };
 

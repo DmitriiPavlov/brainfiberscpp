@@ -610,9 +610,82 @@ TEST_CASE("ParticleAggregate: point_mass resets the distribution") {
     for (int i = 0; i < 100; ++i) agg.step_all(0.3);
     REQUIRE(nonzero_cells(agg, view) > 1);
 
-    agg.point_mass(4, 1000);
+    agg.point_mass_reset(4, 1000);
     CHECK(nonzero_cells(agg, view) == 1);
     CHECK(total_mass(agg, view) == doctest::Approx(1.0));
+}
+TEST_CASE("timing: corner fill census on data/010k.vtk" * doctest::skip()) {
+    constexpr double Z = 10.0;
+    VTKdata raw("data/010k.vtk");
+    VTKdata data = raw.filter([=](const Vec3& p) { return p.getZ() >= -Z && p.getZ() <= Z; }, 100);
+    Graph g(data);
+    const double step = g.avg_norm;     // read before add_intersections shrinks it
+    g.add_intersections();
+
+    // Corner pattern bits: SW = 1, SE = 2, NW = 4, NE = 8.
+    enum Case { ALL4, THREE, HORIZ, VERT, DIAG, ANTIDIAG, ONE, N_CASES };
+    const char* NAME[N_CASES] = {"all four", "three active", "horizontal pair (SW,SE / NW,NE)",
+                                 "vertical pair (SW,NW / SE,NE)", "diagonal pair (SW,NE)",
+                                 "anti-diagonal pair (SE,NW)", "one active"};
+    auto classify = [](int m) {
+        switch (m) {
+            case 15: return ALL4;
+            case 7: case 11: case 13: case 14: return THREE;
+            case 3: case 12: return HORIZ;
+            case 5: case 10: return VERT;
+            case 9: return DIAG;
+            case 6: return ANTIDIAG;
+            default: return ONE;        // 1, 2, 4, 8 (0 is filtered out before this)
+        }
+    };
+
+    for (int mode = 0; mode < 2; ++mode) {
+        std::cout << "\n=== active = " << (mode == 0 ? "cell contains a vertex" : "cell touched by an edge")
+                  << " ===\n";
+
+        for (double mult : {0.25, 0.5, 1.0, 2.0, 4.0}) {          // cell size in units of the average edge
+            const double cell = mult * step;
+            PlanarGraphView view(g, cell);
+            const size_t W = view.w, H = view.h;
+            if (W < 2 || H < 2) continue;
+
+            auto idx = [&](Vec2 p) { auto [x, y] = view.to_cell(p); return y * W + x; };
+
+            std::vector<char> active(W * H, 0);
+            for (int i = 0; i < int(g.length()); ++i) active[idx(g[i])] = 1;
+
+            if (mode == 1) {                                       // also mark cells an edge passes through
+                for (int i = 0; i < int(g.length()); ++i)
+                    for (int j : g.neighbors(i)) {
+                        if (j < i) continue;
+                        Vec2 a = g[i], b = g[j];
+                        const int n = int((b - a).norm() / (cell / 4));
+                        for (int k = 1; k < n; ++k) active[idx(a + (b - a) * (double(k) / n))] = 1;
+                    }
+            }
+
+            size_t counts[N_CASES] = {}, touched = 0;
+            for (size_t j = 0; j + 1 < H; ++j)
+                for (size_t i = 0; i + 1 < W; ++i) {
+                    const size_t sw = j * W + i;
+                    const int m = active[sw] | (active[sw + 1] << 1) | (active[sw + W] << 2) | (active[sw + W + 1] << 3);
+                    if (m == 0) continue;                          // empty corners cost nothing
+                    ++counts[classify(m)];
+                    ++touched;
+                }
+
+            std::cout << std::fixed << std::setprecision(1) << "\ncell = " << mult << " x edge   grid "
+                      << W << " x " << H << "   corners touching a filled cell: " << touched << "\n";
+            for (int c = 0; c < N_CASES; ++c)
+                std::cout << "  " << std::left << std::setw(34) << NAME[c] << std::right
+                          << std::setw(9) << counts[c] << "  " << std::setw(5)
+                          << (touched ? 100.0 * counts[c] / touched : 0.0) << " %\n";
+
+            size_t sum = 0;
+            for (int c = 0; c < N_CASES; ++c) sum += counts[c];
+            CHECK(sum == touched);
+        }
+    }
 }
 
 // ---------- benchmark (skipped by default; run with `make bench`) ----------
@@ -662,7 +735,7 @@ TEST_CASE("timing: particle walk on data/010k.vtk" * doctest::skip()) {
 
     for (double mult : {0.25, 1.0, 4.0}) {          // step length relative to the average edge
         const double dist = mult * g.avg_norm;
-        agg.point_mass(start, int(N_PARTICLES));
+        agg.point_mass_reset(start, int(N_PARTICLES));
 
         auto s0 = clock::now();
         for (int i = 0; i < N_STEPS; ++i) agg.step_all(dist);
